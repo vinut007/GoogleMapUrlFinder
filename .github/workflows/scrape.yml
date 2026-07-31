@@ -33,15 +33,18 @@ jobs:
           python -m playwright install --with-deps chromium
 
       - name: Verify source CSV
-        run: test -f data/NOTurl.csv
+        run: |
+          if [ -f data/pasted.csv ]; then echo "Using data/pasted.csv"; else test -f data/NOTurl.csv; fi
 
       - name: Scrape chunk ${{ matrix.chunk }}
         run: |
           CHUNKS=${{ inputs.chunks || '20' }}
           CHUNK=${{ matrix.chunk }}
           if [ $CHUNK -ge $CHUNKS ]; then echo "chunk out of range, skipping"; exit 0; fi
+          SRC=data/NOTurl.csv
+          [ -f data/pasted.csv ] && SRC=data/pasted.csv
           python pythonurl.py \
-            --src data/NOTurl.csv \
+            --src "$SRC" \
             --out out/result_$CHUNK.csv \
             --start $(( CHUNK * 25000 + 1 )) \
             --count 25000 \

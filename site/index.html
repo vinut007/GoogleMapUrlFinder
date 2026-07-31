@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Google Maps URL Scraper — GitHub</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root { --bg:#0f1117; --panel:#171a23; --border:#262b3a; --text:#d7dae2; --dim:#8b90a0; --accent:#4f8cff; --green:#3fb950; --red:#f85149; --yellow:#d29922; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 "Segoe UI",system-ui,sans-serif; }
+header { padding:16px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }
+header h1 { font-size:17px; margin:0; }
+#statuspill { margin-left:auto; padding:4px 12px; border-radius:20px; font-size:12px; background:#1c2130; color:var(--dim); }
+#statuspill.run { background:#10241a; color:var(--green); }
+#statuspill.err { background:#2b1414; color:var(--red); }
+main { max-width:1100px; margin:0 auto; padding:20px 24px; }
+.grid { display:grid; grid-template-columns:420px 1fr; gap:16px; }
+@media (max-width:900px){ .grid{ grid-template-columns:1fr; } }
+.panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; }
+.panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }
+label { display:block; font-size:12px; color:var(--dim); margin:10px 0 4px; }
+textarea, input[type=text], input[type=password], input[type=number], input[type=file] { width:100%; padding:7px 10px; background:#0f1117; border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:Consolas,monospace; font-size:12px; }
+textarea:focus, input:focus { outline:none; border-color:var(--accent); }
+textarea { resize:vertical; }
+.row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.buttons { display:flex; gap:10px; margin-top:16px; }
+button { padding:9px 18px; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
+.btnG { background:var(--green); color:#05150a; }
+.btnG:hover { filter:brightness(1.1); }
+.btnG:disabled { opacity:.45; cursor:not-allowed; }
+.btnR { background:#2b1414; color:var(--red); border:1px solid #5a2323; }
+.btnR:disabled { opacity:.45; cursor:not-allowed; }
+.hint { font-size:11px; color:var(--dim); margin-top:6px; }
+.statgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.stat { background:#0f1117; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+.stat .v { font-size:20px; font-weight:700; }
+.stat .k { font-size:11px; color:var(--dim); margin-top:2px; }
+a.dl { display:inline-block; margin-top:14px; padding:8px 16px; border:1px solid var(--accent); color:var(--accent); border-radius:6px; text-decoration:none; font-size:13px; }
+a.dl:hover { background:rgba(79,140,255,.12); }
+#jobs { margin-top:12px; }
+.job { display:flex; align-items:center; gap:10px; padding:6px 10px; border:1px solid var(--border); border-radius:6px; margin-bottom:6px; font-size:12px; }
+.job .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chip { padding:2px 10px; border-radius:12px; font-size:11px; background:#1c2130; color:var(--dim); }
+.chip.in_progress { background:#1c2a3a; color:var(--accent); }
+.chip.success { background:#10241a; color:var(--green); }
+.chip.failure { background:#2b1414; color:var(--red); }
+.chip.cancelled { color:var(--dim); }
+#notice { display:none; margin-top:12px; padding:10px 12px; border:1px solid #5a4b1d; background:#241f10; color:#e3c777; border-radius:8px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Google Maps URL Scraper <span style="font-size:12px;color:var(--dim)">(GitHub backend)</span></h1>
+  <span id="statuspill">IDLE</span>
+</header>
+<main>
+  <div class="grid">
+    <section class="panel">
+      <h2>Run config</h2>
+
+      <label>GitHub token (repo scope — stored only in your browser)</label>
+      <input type="password" id="token" placeholder="ghp_...">
+      <div class="hint">Create at github.com/settings/tokens → Generate new token (classic) → tick "repo".</div>
+
+      <label>Column names (comma or newline separated)</label>
+      <textarea id="cols" rows="3" spellcheck="false">id,keyid,company_name,account_alias,address1,address2,state,city,postal_code,country</textarea>
+
+      <label>Paste rows (tab or comma separated, one row per line)</label>
+      <textarea id="rows" rows="8" spellcheck="false" placeholder="1&#9;c25b3186bbf8296a0881db9e25d16149&#9;FARMACIE ITALIANE SRL&#9;NULL&#9;VIA ABRUZZI 25&#9;NULL&#9;RM&#9;ROMA&#9;187&#9;Italy"></textarea>
+
+      <div class="or" style="color:var(--dim);font-size:11px;margin:10px 0 2px;display:flex;align-items:center;gap:10px"><span style="flex:1;height:1px;background:var(--border)"></span>or upload a CSV / XLSX (parsed in your browser)<span style="flex:1;height:1px;background:var(--border)"></span></div>
+      <input type="file" id="file" accept=".csv,.xlsx" style="margin-top:8px">
+      <div class="hint" id="upStatus"></div>
+
+      <div class="row2">
+        <div>
+          <label>Workers (tabs)</label>
+          <input type="number" id="workers" value="20" min="1" max="50">
+        </div>
+        <div>
+          <label>Parallel jobs (max 20)</label>
+          <input type="number" id="chunks" value="20" min="1" max="20">
+        </div>
+      </div>
+      <div class="buttons">
+        <button id="btnStart" class="btnG">Start on GitHub</button>
+        <button id="btnCancel" class="btnR" disabled>Cancel</button>
+      </div>
+      <div class="hint" id="srcHint"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Progress</h2>
+      <div class="statgrid">
+        <div class="stat"><div class="v" id="sRun">-</div><div class="k">Run #</div></div>
+        <div class="stat"><div class="v" id="sStatus">-</div><div class="k">Status</div></div>
+        <div class="stat"><div class="v" id="sJobs">-</div><div class="k">Jobs done</div></div>
+        <div class="stat"><div class="v" id="sRows">0</div><div class="k">Rows sent</div></div>
+        <div class="stat"><div class="v" id="sElapsed">0m</div><div class="k">Elapsed</div></div>
+        <div class="stat"><div class="v" id="sDone">0</div><div class="k">Result rows</div></div>
+      </div>
+      <a class="dl" id="dl" style="display:none">Download merged CSV</a>
+      <div id="jobs"></div>
+      <div id="notice"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const API = 'https://api.github.com';
+let runId = null, runStartedAt = null, token = '', pollTimer = null;
+const repo = 'vinut007/GoogleMapUrlFinder', branch = 'master';
+
+const saved = JSON.parse(localStorage.getItem('gmf') || '{}');
+if (saved.token) $('token').value = saved.token;
+
+async function gh(path, opts = {}) {
+  const r = await fetch(API + path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opts.headers || {}) },
+  });
+  if (r.status === 401 || r.status === 403) throw new Error('Token rejected (' + r.status + ') — check your token');
+  if (!r.ok && r.status !== 404) throw new Error('API ' + r.status + ' ' + path);
+  return r;
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function setPill(text, cls) { const p = $('statuspill'); p.textContent = text; p.className = cls || ''; }
+
+function detectDelim(text) { return text.includes('\t') ? '\t' : ','; }
+
+function csvToParts(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return { cols: '', rows: '' };
+  const delim = detectDelim(lines[0]);
+  const cols = lines[0].split(delim).map(c => c.trim()).join(',');
+  const rows = lines.slice(1).join('\n');
+  return { cols, rows };
+}
+
+$('file').onchange = async () => {
+  const f = $('file').files[0];
+  if (!f) return;
+  const buf = await f.arrayBuffer();
+  try {
+    if (/\.xlsx$/i.test(f.name)) {
+      const wb = XLSX.read(buf);
+      const text = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);
+      const p = csvToParts(text);
+      if (p.cols) $('cols').value = p.cols;
+      $('rows').value = p.rows;
+    } else {
+      const text = new TextDecoder('utf-8').decode(buf);
+      const p = csvToParts(text);
+      if (p.cols) $('cols').value = p.cols;
+      $('rows').value = p.rows;
+    }
+    $('upStatus').textContent = 'Loaded ' + f.name + ' — ' + ($('rows').value.split('\n').filter(l => l.trim()).length) + ' rows into the text area.';
+  } catch (e) {
+    $('upStatus').textContent = 'Could not parse file: ' + e.message;
+  }
+};
+
+async function commitPasted(text) {
+  const path = 'data/pasted.csv';
+  let sha = null;
+  const existing = await gh('/repos/' + repo + '/contents/' + path + '?ref=' + branch);
+  if (existing.status === 200) sha = (await existing.json()).sha;
+  const r = await gh('/repos/' + repo + '/contents/' + path, {
+    method: 'PUT',
+    body: JSON.stringify({ message: 'Paste data for scrape run', content: btoa(unescape(encodeURIComponent(text))), branch, sha }),
+  });
+  if (!r.ok) throw new Error('Failed to save data to repo (' + r.status + ')');
+}
+
+async function dispatch(workers, chunks) {
+  const r = await gh('/repos/' + repo + '/actions/workflows/scrape.yml/dispatches', {
+    method: 'POST',
+    body: JSON.stringify({ ref: branch, inputs: { workers: String(workers), chunks: String(chunks) } }),
+  });
+  if (!r.ok) throw new Error('Dispatch failed (' + r.status + ')');
+}
+
+async function findRun() {
+  const r = await gh('/repos/' + repo + '/actions/workflows/scrape.yml/runs?branch=' + branch + '&event=workflow_dispatch&per_page=5');
+  const runs = (await r.json()).workflow_runs || [];
+  for (const run of runs) {
+    if (new Date(run.created_at) >= new Date(runStartedAt)) return run;
+  }
+  return null;
+}
+
+async function loadJobs() {
+  if (!runId) return;
+  const r = await gh('/repos/' + repo + '/actions/runs/' + runId + '/jobs?per_page=100');
+  const jobs = (await r.json()).jobs || [];
+  let done = 0, html = '';
+  for (const j of jobs) {
+    if (j.status === 'completed') done++;
+    const cls = j.status === 'completed' ? (j.conclusion === 'success' ? 'success' : 'failure') : 'in_progress';
+    html += '<div class="job"><span class="nm">' + escapeHtml(j.name) + '</span><span class="chip ' + (j.status === 'completed' ? cls : 'in_progress') + '">' + (j.status === 'completed' ? j.conclusion : j.status) + '</span></div>';
+  }
+  $('jobs').innerHTML = html;
+  $('sJobs').textContent = done + '/' + jobs.length;
+}
+
+async function checkRun() {
+  if (!runId) return;
+  const r = await gh('/repos/' + repo + '/actions/runs/' + runId);
+  const run = await r.json();
+  const min = Math.floor((Date.now() - new Date(runStartedAt)) / 60000);
+  $('sElapsed').textContent = min + 'm';
+  $('sStatus').textContent = run.status;
+  if (run.status === 'completed') {
+    clearInterval(pollTimer); pollTimer = null;
+    $('btnCancel').disabled = true;
+    if (run.conclusion === 'success') {
+      setPill('DONE ✓', 'run');
+      const a = await gh('/repos/' + repo + '/actions/runs/' + runId + '/artifacts');
+      const art = (await a.json()).artifacts || [];
+      const merged = art.find(x => x.name === 'merged-500k-with-urls');
+      if (merged) {
+        const dl = $('dl');
+        dl.style.display = '';
+        dl.onclick = e => { e.preventDefault(); downloadArtifact(merged.archive_download_url); };
+        $('notice').style.display = 'block';
+        $('notice').innerHTML = 'Run finished. Click "Download merged CSV" to save the result.';
+      }
+    } else {
+      setPill('FAILED', 'err');
+      $('notice').style.display = 'block';
+      $('notice').innerHTML = 'Run ' + runId + ' finished with conclusion: ' + run.conclusion + '. Check failed jobs below and rerun.';
+    }
+  } else {
+    setPill('RUNNING', 'run');
+  }
+  loadJobs();
+}
+
+async function downloadArtifact(url) {
+  try {
+    const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!r.ok) throw new Error('download ' + r.status);
+    const zip = await JSZip.loadAsync(await r.blob());
+    const name = Object.keys(zip.files)[0];
+    const text = await zip.files[name].async('string');
+    const blob = new Blob([text], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'merged-with-urls.csv';
+    a.click();
+    $('sDone').textContent = text.split('\n').length - 1;
+  } catch (e) {
+    $('notice').innerHTML = 'Auto-download failed (' + e.message + '). Use the API link: <a href="' + url + '" target="_blank">open artifact</a>.';
+  }
+}
+
+$('btnStart').onclick = async () => {
+  token = $('token').value.trim();
+  if (!token) { alert('Enter your GitHub token first'); return; }
+  localStorage.setItem('gmf', JSON.stringify({ token }));
+  const workers = Math.max(1, Math.min(50, +$('workers').value || 20));
+  const rows = $('rows').value.trim();
+  const cols = $('cols').value.trim();
+  try {
+    setPill('STARTING', '');
+    $('btnStart').disabled = true;
+    $('jobs').innerHTML = '';
+    const rowCount = rows ? rows.split(/\r?\n/).filter(l => l.trim()).length : 0;
+    $('sRows').textContent = rowCount;
+    let chunks = Math.max(1, Math.min(20, +$('chunks').value || 20));
+    if (rows) {
+      if (!cols) throw new Error('Enter column names first');
+      const text = cols.split(/\r?\n|,/).map(c => c.trim()).filter(Boolean).join('\t') + '\n' +
+        rows.split(/\r?\n/).filter(l => l.trim()).join('\n');
+      await commitPasted(text);
+      chunks = Math.max(1, Math.min(20, Math.ceil(rowCount / 25000)));
+      $('chunks').value = chunks;
+      $('srcHint').textContent = 'Data committed to data/pasted.csv — chunking into ' + chunks + ' job(s).';
+    } else {
+      $('srcHint').textContent = 'No pasted rows — scraping the repo file (data/NOTurl.csv or data/pasted.csv).';
+    }
+    runStartedAt = new Date().toISOString();
+    await dispatch(workers, chunks);
+    $('btnCancel').disabled = false;
+    setPill('WAITING', 'run');
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const run = await findRun();
+      if (run) { runId = run.id; break; }
+    }
+    if (!runId) throw new Error('Could not find the workflow run (wait a few seconds and refresh)');
+    $('sRun').textContent = '#' + runId;
+    clearInterval(pollTimer);
+    pollTimer = setInterval(checkRun, 10000);
+    checkRun();
+  } catch (e) {
+    setPill('ERROR', 'err');
+    $('btnStart').disabled = false;
+    alert(e.message);
+  }
+};
+
+$('btnCancel').onclick = async () => {
+  try {
+    await gh('/repos/' + repo + '/actions/runs/' + runId + '/cancel', { method: 'POST' });
+    setPill('CANCELLING', '');
+  } catch (e) { alert(e.message); }
+};
+
+$('token').oninput = () => { localStorage.setItem('gmf', JSON.stringify({ token: $('token').value.trim() })); };
+</script>
+</body>
+</html>
