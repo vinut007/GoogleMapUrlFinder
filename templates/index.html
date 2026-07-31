@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Google Maps URL Scraper</title>
+<style>
+:root { --bg:#0f1117; --panel:#171a23; --border:#262b3a; --text:#d7dae2; --dim:#8b90a0; --accent:#4f8cff; --green:#3fb950; --red:#f85149; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 "Segoe UI",system-ui,sans-serif; }
+header { padding:16px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }
+header h1 { font-size:17px; margin:0; }
+#statuspill { margin-left:auto; padding:4px 12px; border-radius:20px; font-size:12px; background:#1c2130; color:var(--dim); }
+#statuspill.run { background:#10241a; color:var(--green); }
+main { max-width:1100px; margin:0 auto; padding:20px 24px; }
+.grid { display:grid; grid-template-columns:380px 1fr; gap:16px; }
+@media (max-width:900px){ .grid{ grid-template-columns:1fr; } }
+.panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; }
+.panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }
+label { display:block; font-size:12px; color:var(--dim); margin:10px 0 4px; }
+input[type=text], input[type=number], input[type=file] { width:100%; padding:7px 10px; background:#0f1117; border:1px solid var(--border); border-radius:6px; color:var(--text); }
+input:focus { outline:none; border-color:var(--accent); }
+.row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.buttons { display:flex; gap:10px; margin-top:16px; }
+button { padding:9px 18px; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
+#btnStart { background:var(--green); color:#05150a; }
+#btnStart:hover { filter:brightness(1.1); }
+#btnStart:disabled { opacity:.45; cursor:not-allowed; }
+#btnStop { background:#2b1414; color:var(--red); border:1px solid #5a2323; }
+#btnStop:disabled { opacity:.45; cursor:not-allowed; }
+.hint { font-size:11px; color:var(--dim); margin-top:6px; }
+.upload { margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); }
+.statgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.stat { background:#0f1117; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+.stat .v { font-size:20px; font-weight:700; }
+.stat .k { font-size:11px; color:var(--dim); margin-top:2px; }
+.bar { height:10px; background:#0f1117; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-top:14px; }
+.bar > div { height:100%; width:0%; background:linear-gradient(90deg,#4f8cff,#3fb950); transition:width .5s; }
+#pct { text-align:right; font-size:11px; color:var(--dim); margin-top:4px; }
+a.dl { display:inline-block; margin-top:14px; padding:8px 16px; border:1px solid var(--accent); color:var(--accent); border-radius:6px; text-decoration:none; font-size:13px; }
+a.dl:hover { background:rgba(79,140,255,.12); }
+#log { height:260px; overflow-y:auto; background:#0b0d12; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font:12px/1.6 Consolas,monospace; white-space:pre-wrap; word-break:break-all; }
+#log .dim { color:var(--dim); }
+#upStatus { font-size:11px; color:var(--dim); margin-top:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Google Maps URL Scraper</h1>
+  <span id="statuspill">IDLE</span>
+</header>
+<main>
+  <div class="grid">
+    <section class="panel">
+      <h2>Run config</h2>
+      <label>Source CSV path (server-side)</label>
+      <input type="text" id="src" placeholder="C:\Users\vinut\Downloads\SCRAPING\NOTurl.csv">
+      <div class="upload">
+        <label>...or upload a CSV</label>
+        <input type="file" id="file" accept=".csv">
+        <div id="upStatus"></div>
+      </div>
+      <div class="row2">
+        <div>
+          <label>Workers (tabs)</label>
+          <input type="number" id="workers" value="50" min="1" max="100">
+        </div>
+        <div>
+          <label>Limit rows (0 = all)</label>
+          <input type="number" id="limit" value="0" min="0">
+        </div>
+      </div>
+      <div class="buttons">
+        <button id="btnStart">Start</button>
+        <button id="btnStop" disabled>Stop</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Progress</h2>
+      <div class="statgrid">
+        <div class="stat"><div class="v" id="sSaved">0</div><div class="k">Saved</div></div>
+        <div class="stat"><div class="v" id="sTotal">?</div><div class="k">Total rows</div></div>
+        <div class="stat"><div class="v" id="sRate">0</div><div class="k">Rows/min</div></div>
+        <div class="stat"><div class="v" id="sOk">0</div><div class="k">OK processed</div></div>
+        <div class="stat"><div class="v" id="sFail">0</div><div class="k">Failed</div></div>
+        <div class="stat"><div class="v" id="sElapsed">0s</div><div class="k">Elapsed</div></div>
+        <div class="stat"><div class="v" id="sYes">0</div><div class="k">MATCHED=YES</div></div>
+        <div class="stat"><div class="v" id="sCity">0</div><div class="k">CITY</div></div>
+        <div class="stat"><div class="v" id="sCountry">0</div><div class="k">COUNTRY</div></div>
+        <div class="stat"><div class="v" id="sNo">0</div><div class="k">NO</div></div>
+      </div>
+      <div class="bar"><div id="barFill"></div></div>
+      <div id="pct">0%</div>
+      <a class="dl" id="dl" href="/download" style="display:none">Download results CSV</a>
+      <div class="hint" id="srcHint"></div>
+    </section>
+  </div>
+
+  <section class="panel" style="margin-top:16px">
+    <h2>Log</h2>
+    <div id="log"><span class="dim">Waiting for job...</span></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let lastLog = 0;
+let pillTimer = null;
+
+async function refresh() {
+  try {
+    const s = await (await fetch('/api/status')).json();
+    const run = s.running;
+    const pct = s.total ? Math.min(100, s.saved / s.total * 100) : 0;
+    $('sSaved').textContent = s.saved.toLocaleString();
+    $('sTotal').textContent = s.total ? s.total.toLocaleString() : '?';
+    $('sRate').textContent = s.rate.toLocaleString();
+    $('sOk').textContent = s.ok.toLocaleString();
+    $('sFail').textContent = s.fail.toLocaleString();
+    $('sElapsed').textContent = Math.floor(s.elapsed / 60) + 'm ' + Math.round(s.elapsed % 60) + 's';
+    $('sYes').textContent = (s.matched.YES || 0).toLocaleString();
+    $('sCity').textContent = (s.matched.CITY || 0).toLocaleString();
+    $('sCountry').textContent = (s.matched.COUNTRY || 0).toLocaleString();
+    $('sNo').textContent = (s.matched.NO || 0).toLocaleString();
+    $('barFill').style.width = pct + '%';
+    $('pct').textContent = pct.toFixed(1) + '%';
+    $('dl').style.display = s.has_output ? '' : 'none';
+    $('srcHint').textContent = s.src ? 'Source: ' + s.src : '';
+    $('btnStart').disabled = run;
+    $('btnStop').disabled = !run;
+    const pill = $('statuspill');
+    pill.textContent = run ? 'RUNNING' : (s.saved ? 'DONE' : 'IDLE');
+    pill.className = run ? 'run' : '';
+    if (run && !pillTimer) {
+      pillTimer = setInterval(() => {
+        pill.textContent = pill.textContent === 'RUNNING' ? 'RUNNING ●' : 'RUNNING';
+      }, 600);
+    } else if (!run && pillTimer) { clearInterval(pillTimer); pillTimer = null; }
+  } catch (e) { /* server restarting */ }
+}
+
+async function pullLogs() {
+  try {
+    const r = await (await fetch('/api/logs?after=' + lastLog)).json();
+    lastLog = r.after;
+    const box = $('log');
+    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    if (r.lines.length) {
+      if (box.querySelector('.dim')) box.innerHTML = '';
+      box.insertAdjacentHTML('beforeend', r.lines.map(escapeHtml).join('\n'));
+      if (nearBottom) box.scrollTop = box.scrollHeight;
+    }
+  } catch (e) {}
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+$('btnStart').onclick = async () => {
+  const body = { src: $('src').value.trim(), workers: +$('workers').value, limit: +$('limit').value };
+  const r = await fetch('/api/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!j.ok) { alert(j.error); return; }
+  lastLog = 0;
+};
+
+$('btnStop').onclick = async () => { await fetch('/api/stop', { method: 'POST' }); };
+
+$('file').onchange = async () => {
+  const f = $('file').files[0];
+  if (!f) return;
+  const fd = new FormData();
+  fd.append('file', f);
+  const r = await fetch('/api/upload', { method: 'POST', body: fd });
+  const j = await r.json();
+  $('upStatus').textContent = j.ok ? 'Uploaded: ' + j.name : 'Upload failed';
+  if (j.ok) $('src').value = j.src;
+};
+
+refresh();
+setInterval(refresh, 1000);
+setInterval(pullLogs, 1000);
+</script>
+</body>
+</html>
