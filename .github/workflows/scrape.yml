@@ -1,0 +1,78 @@
+name: Scrape Google Maps URLs
+
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: 'Tabs per job (GitHub runner = 2 vCPU, keep 15-25)'
+        required: false
+        default: '20'
+      chunks:
+        description: 'How many parallel jobs (free tier allows up to 20)'
+        required: false
+        default: '20'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Verify source CSV
+        run: test -f data/NOTurl.csv
+
+      - name: Scrape chunk ${{ matrix.chunk }}
+        run: |
+          CHUNKS=${{ inputs.chunks || '20' }}
+          CHUNK=${{ matrix.chunk }}
+          if [ $CHUNK -ge $CHUNKS ]; then echo "chunk out of range, skipping"; exit 0; fi
+          python pythonurl.py \
+            --src data/NOTurl.csv \
+            --out out/result_$CHUNK.csv \
+            --start $(( CHUNK * 25000 + 1 )) \
+            --count 25000 \
+            --workers ${{ inputs.workers || '20' }}
+
+      - name: Upload chunk result
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.chunk }}
+          path: out/result_${{ matrix.chunk }}.csv
+          if-no-files-found: warn
+
+  merge:
+    needs: scrape
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          merge-multiple: true
+          path: out
+
+      - name: Merge chunks into one CSV
+        run: |
+          FILES=$(ls out/result_*.csv | sort)
+          FIRST=$(echo "$FILES" | head -1)
+          head -1 "$FIRST" > merged.csv
+          for f in $FILES; do tail -n +2 "$f" >> merged.csv; done
+          echo "Total lines: $(wc -l < merged.csv)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merged-500k-with-urls
+          path: merged.csv

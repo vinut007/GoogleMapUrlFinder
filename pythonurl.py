@@ -313,9 +313,9 @@ async def worker(worker_id, queue, out_file, browser):
 
 
 class SafeWriter:
-    def __init__(self, path, fieldnames):
+    def __init__(self, path, fieldnames, delimiter=","):
         self._f = open(path, "w", newline="", encoding="utf-8-sig")
-        self._w = csv.writer(self._f)
+        self._w = csv.writer(self._f, delimiter=delimiter)
         self._w.writerow(fieldnames)
         self._fieldnames = fieldnames
 
@@ -325,6 +325,15 @@ class SafeWriter:
 
     def close(self):
         self._f.close()
+
+
+def sniff_delim(path, enc):
+    with open(path, encoding=enc, errors="replace", newline="") as f:
+        sample = f.read(65536)
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=",\t;|").delimiter
+    except Exception:
+        return ","
 
 
 def main():
@@ -351,8 +360,9 @@ def run_scrape(args):
     done_ids = set()
     stats = {"ok": 0, "fail": 0, "matched": {}}
     if os.path.exists(out_csv) and os.path.getsize(out_csv) > 0:
+        out_delim = sniff_delim(out_csv, "utf-8-sig")
         with open(out_csv, encoding="utf-8-sig") as f:
-            for r in csv.DictReader(f):
+            for r in csv.DictReader(f, delimiter=out_delim):
                 kid = (get_field(r, "KEYID") or "").strip()
                 if kid:
                     done_ids.add(kid)
@@ -366,14 +376,15 @@ def run_scrape(args):
         enc = "utf-8"
     except UnicodeDecodeError:
         enc = "latin-1"
+    delim = sniff_delim(src_csv, enc)
     src = open(src_csv, encoding=enc, errors="replace", newline="")
-    reader = csv.DictReader(src)
+    reader = csv.DictReader(src, delimiter=delim)
 
     global CURRENT_TOTAL
     with open(src_csv, encoding=enc, errors="replace", newline="") as cf:
-        CURRENT_TOTAL = sum(1 for _ in csv.DictReader(cf))
+        CURRENT_TOTAL = sum(1 for _ in csv.DictReader(cf, delimiter=delim))
     log(f"Total rows: {CURRENT_TOTAL}")
-    out = SafeWriter(out_csv, [k for k in reader.fieldnames if k.strip()] + ["URL"])
+    out = SafeWriter(out_csv, [k for k in reader.fieldnames if k.strip()] + ["URL"], delim)
 
     q = asyncio.Queue(maxsize=workers * 2)
 
@@ -385,7 +396,7 @@ def run_scrape(args):
                 continue
             if args.limit and (total - args.start) > args.limit:
                 break
-            if args.count and (total - args.start) > args.count:
+            if args.count and (total - args.start) >= args.count:
                 break
             kid = (get_field(row, "KEYID") or "").strip()
             if kid and kid in done_ids:
