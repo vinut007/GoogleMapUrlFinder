@@ -5,7 +5,9 @@ Run:  python webapp.py
 Then open: http://127.0.0.1:5000
 """
 import argparse
+import csv
 import os
+import re
 import sys
 import threading
 import time
@@ -91,13 +93,69 @@ def api_logs():
     return jsonify({"after": len(items), "lines": items[after:]})
 
 
+@app.route("/api/preview")
+def api_preview():
+    if not os.path.exists(OUT_CSV) or os.path.getsize(OUT_CSV) == 0:
+        return jsonify({"headers": [], "rows": []})
+    with open(OUT_CSV, encoding="utf-8-sig") as f:
+        r = csv.DictReader(f)
+        headers = [h for h in (r.fieldnames or []) if h]
+        rows = [dict(row) for _, row in zip(range(10), r)]
+    return jsonify({"headers": headers, "rows": rows})
+
+
+def xlsx_to_csv(path, out_path):
+    import openpyxl
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb.active
+    rows = []
+    for row in ws.iter_rows(values_only=True):
+        rows.append(["" if v is None else v for v in row])
+    wb.close()
+    while rows and not any(str(c).strip() for c in rows[-1]):
+        rows.pop()
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        for row in rows:
+            w.writerow(["NULL" if str(c).strip().upper() == "NULL" else c for c in row])
+
+
 @app.route("/api/upload", methods=["POST"])
 def api_upload():
     f = request.files.get("file")
     if not f or not f.filename:
         abort(400)
-    f.save(UPLOAD_CSV)
-    return jsonify({"ok": True, "src": UPLOAD_CSV, "name": f.filename})
+    name = f.filename
+    ext = os.path.splitext(name)[1].lower()
+    if ext == ".xlsx":
+        tmp = os.path.join(WORK, "tmp_upload.xlsx")
+        f.save(tmp)
+        xlsx_to_csv(tmp, UPLOAD_CSV)
+        os.remove(tmp)
+    elif ext == ".csv":
+        f.save(UPLOAD_CSV)
+    else:
+        return jsonify({"ok": False, "error": "Only .csv or .xlsx allowed"}), 400
+    return jsonify({"ok": True, "src": UPLOAD_CSV, "name": name})
+
+
+def save_pasted(columns, rows):
+    cols = [c.strip() for c in re.split(r"[,\t\n]+", columns) if c.strip()]
+    delim = "\t" if "\t" in rows else ","
+    path = os.path.join(WORK, "pasted.csv")
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, delimiter=delim)
+        w.writerow(cols)
+        for line in rows.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            vals = line.split(delim)
+            if len(vals) == len(cols) and [v.strip() for v in vals] == cols:
+                continue
+            vals = ["" if not v.strip() or v.strip().upper() == "NULL" else v.strip() for v in vals]
+            w.writerow(vals)
+    return path
 
 
 @app.route("/api/start", methods=["POST"])
@@ -105,9 +163,13 @@ def api_start():
     if job["running"]:
         return jsonify({"ok": False, "error": "Job already running"}), 409
     body = request.get_json(silent=True) or {}
-    src = (body.get("src") or "").strip() or (
-        UPLOAD_CSV if os.path.exists(UPLOAD_CSV) else ""
-    )
+    src = ""
+    if (body.get("rows") or "").strip():
+        src = save_pasted(body.get("columns") or "", body.get("rows") or "")
+    else:
+        src = (body.get("src") or "").strip() or (
+            UPLOAD_CSV if os.path.exists(UPLOAD_CSV) else ""
+        )
     if not src or not os.path.exists(src):
         return jsonify({"ok": False, "error": f"Source CSV not found: {src}"}), 400
     workers = max(1, min(int(body.get("workers") or 50), 100))

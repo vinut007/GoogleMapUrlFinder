@@ -13,13 +13,14 @@ header h1 { font-size:17px; margin:0; }
 #statuspill { margin-left:auto; padding:4px 12px; border-radius:20px; font-size:12px; background:#1c2130; color:var(--dim); }
 #statuspill.run { background:#10241a; color:var(--green); }
 main { max-width:1100px; margin:0 auto; padding:20px 24px; }
-.grid { display:grid; grid-template-columns:380px 1fr; gap:16px; }
+.grid { display:grid; grid-template-columns:420px 1fr; gap:16px; }
 @media (max-width:900px){ .grid{ grid-template-columns:1fr; } }
 .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; }
 .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px; }
 label { display:block; font-size:12px; color:var(--dim); margin:10px 0 4px; }
-input[type=text], input[type=number], input[type=file] { width:100%; padding:7px 10px; background:#0f1117; border:1px solid var(--border); border-radius:6px; color:var(--text); }
-input:focus { outline:none; border-color:var(--accent); }
+textarea, input[type=text], input[type=number], input[type=file] { width:100%; padding:7px 10px; background:#0f1117; border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:Consolas,monospace; font-size:12px; }
+textarea:focus, input:focus { outline:none; border-color:var(--accent); }
+textarea { resize:vertical; }
 .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .buttons { display:flex; gap:10px; margin-top:16px; }
 button { padding:9px 18px; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
@@ -29,7 +30,9 @@ button { padding:9px 18px; border:none; border-radius:6px; font-size:13px; font-
 #btnStop { background:#2b1414; color:var(--red); border:1px solid #5a2323; }
 #btnStop:disabled { opacity:.45; cursor:not-allowed; }
 .hint { font-size:11px; color:var(--dim); margin-top:6px; }
-.upload { margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); }
+.or { display:flex; align-items:center; gap:10px; color:var(--dim); font-size:11px; margin:14px 0 2px; }
+.or::before, .or::after { content:""; flex:1; height:1px; background:var(--border); }
+.upload { margin-top:8px; padding-top:10px; }
 .statgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
 .stat { background:#0f1117; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
 .stat .v { font-size:20px; font-weight:700; }
@@ -39,9 +42,15 @@ button { padding:9px 18px; border:none; border-radius:6px; font-size:13px; font-
 #pct { text-align:right; font-size:11px; color:var(--dim); margin-top:4px; }
 a.dl { display:inline-block; margin-top:14px; padding:8px 16px; border:1px solid var(--accent); color:var(--accent); border-radius:6px; text-decoration:none; font-size:13px; }
 a.dl:hover { background:rgba(79,140,255,.12); }
-#log { height:260px; overflow-y:auto; background:#0b0d12; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font:12px/1.6 Consolas,monospace; white-space:pre-wrap; word-break:break-all; }
+#log { height:240px; overflow-y:auto; background:#0b0d12; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font:12px/1.6 Consolas,monospace; white-space:pre-wrap; word-break:break-all; }
 #log .dim { color:var(--dim); }
 #upStatus { font-size:11px; color:var(--dim); margin-top:6px; }
+#previewWrap { display:none; margin-top:16px; }
+.tblwrap { overflow:auto; max-height:280px; border:1px solid var(--border); border-radius:8px; }
+table { border-collapse:collapse; font-size:12px; width:100%; }
+th, td { border-bottom:1px solid var(--border); padding:6px 10px; text-align:left; white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+th { background:#0f1117; color:var(--dim); position:sticky; top:0; }
+td.u { color:var(--accent); }
 </style>
 </head>
 <body>
@@ -53,13 +62,13 @@ a.dl:hover { background:rgba(79,140,255,.12); }
   <div class="grid">
     <section class="panel">
       <h2>Run config</h2>
-      <label>Source CSV path (server-side)</label>
-      <input type="text" id="src" placeholder="C:\Users\vinut\Downloads\SCRAPING\NOTurl.csv">
-      <div class="upload">
-        <label>...or upload a CSV</label>
-        <input type="file" id="file" accept=".csv">
-        <div id="upStatus"></div>
-      </div>
+
+      <label>Column names (comma or newline separated)</label>
+      <textarea id="cols" rows="3" spellcheck="false">id,keyid,company_name,account_alias,address1,address2,state,city,postal_code,country</textarea>
+
+      <label>Paste rows (tab or comma separated, one row per line)</label>
+      <textarea id="rows" rows="10" spellcheck="false" placeholder="1&#9;c25b3186bbf8296a0881db9e25d16149&#9;FARMACIE ITALIANE SRL&#9;NULL&#9;VIA ABRUZZI 25&#9;NULL&#9;RM&#9;ROMA&#9;187&#9;Italy"></textarea>
+
       <div class="row2">
         <div>
           <label>Workers (tabs)</label>
@@ -73,6 +82,15 @@ a.dl:hover { background:rgba(79,140,255,.12); }
       <div class="buttons">
         <button id="btnStart">Start</button>
         <button id="btnStop" disabled>Stop</button>
+      </div>
+
+      <div class="or">or use a file instead of pasting</div>
+      <label>Source CSV path (server-side)</label>
+      <input type="text" id="src" placeholder="C:\Users\vinut\Downloads\SCRAPING\NOTurl.csv">
+      <div class="upload">
+        <label>...or upload a CSV / XLSX</label>
+        <input type="file" id="file" accept=".csv,.xlsx">
+        <div id="upStatus"></div>
       </div>
     </section>
 
@@ -97,6 +115,11 @@ a.dl:hover { background:rgba(79,140,255,.12); }
     </section>
   </div>
 
+  <section class="panel" id="previewWrap">
+    <h2>Output preview (first 10 rows — URL is appended as the last column)</h2>
+    <div class="tblwrap"><table id="previewTable"></table></div>
+  </section>
+
   <section class="panel" style="margin-top:16px">
     <h2>Log</h2>
     <div id="log"><span class="dim">Waiting for job...</span></div>
@@ -107,6 +130,11 @@ a.dl:hover { background:rgba(79,140,255,.12); }
 const $ = id => document.getElementById(id);
 let lastLog = 0;
 let pillTimer = null;
+let prevRunning = null;
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
 
 async function refresh() {
   try {
@@ -137,7 +165,25 @@ async function refresh() {
         pill.textContent = pill.textContent === 'RUNNING' ? 'RUNNING ●' : 'RUNNING';
       }, 600);
     } else if (!run && pillTimer) { clearInterval(pillTimer); pillTimer = null; }
+    if (prevRunning === true && !run && s.saved > 0) loadPreview();
+    prevRunning = run;
   } catch (e) { /* server restarting */ }
+}
+
+async function loadPreview() {
+  try {
+    const p = await (await fetch('/api/preview')).json();
+    if (!p.headers.length) return;
+    const t = $('previewTable');
+    let h = '<thead><tr>' + p.headers.map(x => '<th>' + escapeHtml(x) + '</th>').join('') + '</tr></thead><tbody>';
+    for (const r of p.rows) {
+      h += '<tr>' + p.headers.map(x =>
+        '<td' + (x === 'URL' ? ' class="u"' : '') + ' title="' + escapeHtml(r[x] || '') + '">' + escapeHtml(r[x] || '') + '</td>'
+      ).join('') + '</tr>';
+    }
+    t.innerHTML = h + '</tbody>';
+    $('previewWrap').style.display = '';
+  } catch (e) {}
 }
 
 async function pullLogs() {
@@ -154,16 +200,17 @@ async function pullLogs() {
   } catch (e) {}
 }
 
-function escapeHtml(s) {
-  return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-}
-
 $('btnStart').onclick = async () => {
-  const body = { src: $('src').value.trim(), workers: +$('workers').value, limit: +$('limit').value };
+  const workers = +$('workers').value, limit = +$('limit').value;
+  const pasted = $('rows').value.trim();
+  const body = pasted
+    ? { columns: $('cols').value, rows: $('rows').value, workers, limit }
+    : { src: $('src').value.trim(), workers, limit };
   const r = await fetch('/api/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
   const j = await r.json();
   if (!j.ok) { alert(j.error); return; }
   lastLog = 0;
+  $('previewWrap').style.display = 'none';
 };
 
 $('btnStop').onclick = async () => { await fetch('/api/stop', { method: 'POST' }); };
